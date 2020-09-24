@@ -1,62 +1,125 @@
-var express = require('express')
-var graphqlHTTP = require('express-graphql').graphqlHTTP
-var { buildSchema } = require('graphql')
+// var express = require('express')
+// var graphqlHTTP = require('express-graphql').graphqlHTTP
+// var { buildSchema } = require('graphql')
 
-var schema = buildSchema(`
-  input UserInput {
-    name: String
-    type: String
-    creater: String
+// var knex = require('knex')({
+//   client: 'pg',
+//   connection: {
+//     host: '127.0.0.1',
+//     user: '',
+//     password: '',
+//     database: 'test'
+//   }
+// })
+
+// var schema = buildSchema(`
+//   input UserInput {
+//     name: String
+//     type: String
+//     creater: String
+//   }
+//   type kita{
+//     id: ID!
+//     name:String
+//   }
+//   type Query{
+//     me: [kita]
+//     cc(id:ID):[kita]
+//   }
+//   type Mutation{
+//     createUser(id:ID!, name: String):[kita]
+//     updateUser(id: ID!, name: String): [kita]
+//     delete(id:ID!):[kita]
+//   }
+// `)
+
+// var root = {
+//   me: () => knex('kita').select(),
+//   cc: (val) => knex('kita').where('id', val.id),
+//   createUser: async ({ ...arg }) => {
+//     await knex('kita').insert({ id: arg.id, name: arg.name })
+//   },
+//   updateUser: async ({ id, ...arg }) => {
+//     await knex('kita')
+//       .where('id', '=', id)
+//       .update({
+//         name: arg.name
+//       })
+//   },
+//   delete: async (arg) => {
+//     console.log(arg.id)
+//     await knex('kita')
+//       .where('id', arg.id)
+//       .del()
+//   }
+// }
+
+// var app = express()
+// app.use('/graphql', graphqlHTTP({
+//   schema: schema,
+//   rootValue: root,
+//   graphiql: true
+// }))
+// app.listen(4000, () => console.log('Now browse to localhost:4000/graphql'))
+
+const { ApolloServer, gql } = require('apollo-server')
+
+var knex = require('knex')({
+  client: 'pg',
+  connection: {
+    host: '127.0.0.1',
+    user: '',
+    password: '',
+    database: 'test'
   }
-  type User{
+})
+
+const typeDefs = gql`
+  input UserInput {
     id: ID!
     name:String
-    type:String
-    creater:String
+  }
+  type kita{
+    id: ID!
+    name:String
   }
   type Query{
-    me: [User]
-    User(id:ID):[User]
+    me: [kita]
+    cc(id:ID):[kita]
   }
   type Mutation{
-    createUser(name: String, type: String, creater: String):User
-    updateUser(id: ID!, name: String, type: String, creater: String): [User]
+    createUser(input:UserInput):[kita]
+    updateUser(id: ID!, name:String): [kita]
+    delete(id:ID!):[kita]
   }
-`)
+`
 
-var arr = [
-  { id: 1, name: 'kita', type: 'mp3', creater: 'A' },
-  { id: 2, name: 'mio', type: 'mp4', creater: 'B' },
-  { id: 3, name: 'yui', type: 'avi', creater: 'C' },
-  { id: 4, name: 'ritus', type: 'rmvb', creater: 'D' }
-]
-
-var root = {
-  me: () => arr,
-  User: val => arr.filter(item => item.id === val.id),
-  createUser: ({ ...arg }) => {
-    const id = arr[arr.length - 1].id
-    const obj = arg
-    obj.id = id + 1
-    arr.push(obj)
+const resolvers = {
+  Query: {
+    me: () => knex('kita').select(),
+    cc: (arg) => knex('kita').where('id', arg.id)
   },
-  updateUser: ({ id, ...arg }) => {
-    for (let i = 0; i < arr.length; i++) {
-      // console.log(arr[i].id)
-      if (arr[i].id == id) {
-        arr[i] = Object.assign({}, arr[i], arg)
-        console.log(arr[i])
-        return
-      }
+  Mutation: {
+    createUser: async (root, args, context) => {
+      const { id, name } = args.input
+      return await knex('kita')
+        .insert({ id, name }).returning('*')
+    },
+    updateUser: async (root, args, context) => {
+      return await knex('kita').where('id', '=', args.id)
+        .update({
+          name: args.name
+        }).returning('*')
+    },
+    delete: async (root, args, context) => {
+      return await knex('kita')
+        .where('id', args.id)
+        .del().returning('*')
     }
-    throw new Error('id:' + id + '不存在')
   }
 }
+const server = new ApolloServer({ typeDefs, resolvers })
 
-var app = express()
-app.use('/graphql', graphqlHTTP({
-  schema: schema,
-  rootValue: root,
-  graphiql: true
-}))
-app.listen(4000, () => console.log('Now browse to localhost:4000/graphql'))
+server.listen().then(({ url }) => {
+  console.log(` Server ready at ${url}`)
+})
